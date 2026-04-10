@@ -1,13 +1,11 @@
 #include <Arduino.h>
 #include "BluetoothSerial.h"
 
-// ESC 1: UART2
 HardwareSerial SerialESC1(2);
 #define RXD2 16
 
-// ESC 2: UART1
 HardwareSerial SerialESC2(1);
-#define RXD1 18  // Change this pin to whatever you're using
+#define RXD1 18  // Change to your actual pin
 
 BluetoothSerial SerialBT;
 #define BT_DEVICE_NAME "ESC_Telemetry"
@@ -18,7 +16,7 @@ struct ESC_Data {
   uint16_t current;
   uint16_t consumption;
   uint16_t erpm;
-  bool     valid;  // tracks if we've received good data yet
+  bool     valid;
 };
 
 ESC_Data tlm1, tlm2;
@@ -71,41 +69,32 @@ void setup() {
 }
 
 void loop() {
-  // Read ESC 1
   if (SerialESC1.available() >= 10) {
     SerialESC1.readBytes(buf1, 10);
     parseESC(buf1, tlm1);
   }
 
-  // Read ESC 2
   if (SerialESC2.available() >= 10) {
     SerialESC2.readBytes(buf2, 10);
     parseESC(buf2, tlm2);
   }
 
-  // Only broadcast once both ESCs have sent valid data
   if (tlm1.valid && tlm2.valid) {
-    // Combined values:
-    // - temp: max of the two (most conservative/safe)
-    // - voltage: average (they share the same battery, should be close)
-    // - current: sum (total draw from both ESCs)
-    // - consumption: sum (total mAh used)
-    // - erpm: average (or pick whichever makes sense for your setup)
-
-    uint8_t  combined_temp        = max(tlm1.temp, tlm2.temp);
-    float    combined_voltage     = ((tlm1.voltage + tlm2.voltage) / 2.0f) / 100.0f;
-    float    combined_current     = (tlm1.current + tlm2.current) / 100.0f;
-    uint16_t combined_consumption = tlm1.consumption + tlm2.consumption;
-    uint32_t combined_erpm        = ((uint32_t)(tlm1.erpm + tlm2.erpm) / 2) * 100;
-
     char msg[128];
-    snprintf(msg, sizeof(msg), "/*%d,%.2f,%.2f,%d,%lu*/\n",
-             combined_temp,
-             combined_voltage,
-             combined_current,
-             combined_consumption,
-             combined_erpm);
+    snprintf(msg, sizeof(msg), "/*%d,%.2f,%.2f,%d,%d,%d,%.2f,%.2f,%d,%d*/\n",
+             tlm1.temp,
+             tlm1.voltage / 100.0,
+             tlm1.current / 100.0,
+             tlm1.consumption,
+             tlm1.erpm * 100,
+             tlm2.temp,
+             tlm2.voltage / 100.0,
+             tlm2.current / 100.0,
+             tlm2.consumption,
+             tlm2.erpm * 100);
 
     broadcastPrint(msg);
+    tlm1.valid = false;
+    tlm2.valid = false;
   }
 }
